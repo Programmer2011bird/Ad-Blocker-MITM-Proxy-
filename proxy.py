@@ -5,11 +5,6 @@ import threading
 import requests
 import config
 import socket
-import sys
-
-# TODO : REFACTOR THIS ATROCITY
-# TODO : ADD LOGGIN FOR HTTPS 
-# TODO : ADD A PROXY THAT IS CONFIGURABLE IN CONFIG.py
 
 session = requests.Session()
 session.verify = False
@@ -177,18 +172,3 @@ class MITMProxyServer(BaseHTTPRequestHandler):
 class ThreadingServer(ThreadingMixIn, HTTPServer):
     daemon_threads: bool = True
     allow_reuse_address: bool = True
-
-def main():
-    try:
-        server: ThreadingServer = ThreadingServer((config.HOST, config.PORT), MITMProxyServer)
-        server.serve_forever()
-
-    except KeyboardInterrupt:
-        sys.exit(0)
-
-    except Exception as e:
-        print(e)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
