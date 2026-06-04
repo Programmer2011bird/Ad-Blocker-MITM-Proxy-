@@ -68,8 +68,8 @@ class MITMProxyServer(BaseHTTPRequestHandler):
             client_to_target.start()
             target_to_client.start()
             
-            # Wait for either thread to finish (connection closed)
             client_to_target.join()
+            target_to_client.join()
 
         except Exception as e:
             print(f"Tunnel Error: {e}")
