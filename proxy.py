@@ -25,6 +25,17 @@ session.mount("http://", adapter)
 session.mount("https://", adapter)
 
 class MITMProxyServer(BaseHTTPRequestHandler):
+    def log(self, value: str | None, category: str | None): 
+        if not config.LOG:
+            return
+    
+        if category:
+            num_chars = 50 - (len(category)//2)
+            print("="*num_chars + f"{category}" + "="*num_chars)
+        
+        if value:
+            print(value)
+
     def do_GET(self): self.handle_request() # GET requests
     def do_POST(self): self.handle_request() # POST requests
     def do_PUT(self): self.handle_request() # PUT requests
@@ -35,11 +46,15 @@ class MITMProxyServer(BaseHTTPRequestHandler):
     def do_CONNECT(self): 
         host, port = self.path.split(":")
         port = int(port)
-        print(host, port)
+        
+        self.log(f"CONNECT {host} : {port}", "[COMMAND + URL]")
 
         try : 
             target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             target_socket.connect((host, port))
+
+            self.log(None, "[REQUEST HEADERS]")
+            for key, value in self.headers.items(): self.log(f"{key} : {value}", None)
             
             self.send_response(200, "Connection Established")
             self.end_headers()
@@ -60,11 +75,9 @@ class MITMProxyServer(BaseHTTPRequestHandler):
                     client_socket.close()
                     target_socket.close()
 
-            client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket))
-            target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket))
+            client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket), daemon=True)
+            target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket), daemon=True)
             
-            client_to_target.daemon = True
-            target_to_client.daemon = True
             client_to_target.start()
             target_to_client.start()
             
@@ -78,17 +91,6 @@ class MITMProxyServer(BaseHTTPRequestHandler):
             except:
                 pass
 
-    def log(self, value: str | None, category: str | None): 
-        if not config.LOG:
-            return
-    
-        if category:
-            num_chars = 50 - (len(category)//2)
-            print("="*num_chars + f"{category}" + "="*num_chars)
-        
-        if value:
-            print(value)
-
     def get_url(self) -> None:
         if self.path.startswith("http") or self.path.startswith("https"):
             self.url: str = self.path
@@ -101,7 +103,7 @@ class MITMProxyServer(BaseHTTPRequestHandler):
         
         if content_length and self.command in ['POST', 'PUT', 'PATCH']:
             self.body = self.rfile.read(int(content_length))
-            self.log(self.body.decode(), "CONTENT")
+            self.log(self.body.decode(), "[REQUEST CONTENT]")
 
         self.log(None, "[REQUEST HEADERS]")
 
@@ -153,7 +155,6 @@ class MITMProxyServer(BaseHTTPRequestHandler):
 
             self.wfile.write(response.content)
 
-        
         except requests.exceptions.Timeout:
             print("\n[ERROR] Request timeout")
             self.send_error(504, "Gateway Timeout")
