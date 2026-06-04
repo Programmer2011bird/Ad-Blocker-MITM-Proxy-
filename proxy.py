@@ -1,9 +1,15 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import requests.adapters
+import threading
 import requests
 import config
+import socket
 import sys
+
+# TODO : REFACTOR THIS ATROCITY
+# TODO : ADD LOGGIN FOR HTTPS 
+# TODO : ADD A PROXY THAT IS CONFIGURABLE IN CONFIG.py
 
 session = requests.Session()
 session.verify = False
@@ -25,6 +31,52 @@ class MITMProxyServer(BaseHTTPRequestHandler):
     def do_DELETE(self): self.handle_request() # DELETE requests
     def do_HEAD(self): self.handle_request() # HEAD requests
     def do_OPTIONS(self): self.handle_request() # OPTIONS requests
+    
+    def do_CONNECT(self): 
+        host, port = self.path.split(":")
+        port = int(port)
+        print(host, port)
+
+        try : 
+            target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target_socket.connect((host, port))
+            
+            self.send_response(200, "Connection Established")
+            self.end_headers()
+            
+            client_socket = self.request
+            
+            def forward(source, dest):
+                try:
+                    while True:
+                        data = source.recv(8192)
+                        if not data:
+                            break
+                        dest.send(data)
+                except:
+                    pass
+                finally:
+                    # Close both sockets if either direction fails
+                    client_socket.close()
+                    target_socket.close()
+
+            client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket))
+            target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket))
+            
+            client_to_target.daemon = True
+            target_to_client.daemon = True
+            client_to_target.start()
+            target_to_client.start()
+            
+            # Wait for either thread to finish (connection closed)
+            client_to_target.join()
+
+        except Exception as e:
+            print(f"Tunnel Error: {e}")
+            try:
+                self.send_error(502, f"Bad Gateway: {str(e)}")
+            except:
+                pass
 
     def log(self, value: str | None, category: str | None): 
         if not config.LOG:
@@ -51,7 +103,6 @@ class MITMProxyServer(BaseHTTPRequestHandler):
             self.body = self.rfile.read(int(content_length))
             self.log(self.body.decode(), "CONTENT")
 
-        
         self.log(None, "[REQUEST HEADERS]")
 
         headers: dict[str, str] = {}
