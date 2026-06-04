@@ -25,7 +25,8 @@ session.mount("http://", adapter)
 session.mount("https://", adapter)
 
 class MITMProxyServer(BaseHTTPRequestHandler):
-    def log(self, value: str | None, category: str | None): 
+    # Function for logging
+    def log(self, value: str | None, category: str | None) -> None:
         if not config.LOG:
             return
     
@@ -36,6 +37,13 @@ class MITMProxyServer(BaseHTTPRequestHandler):
         if value:
             print(value)
 
+    # Handling special urls
+    def get_url(self) -> None:
+        if self.path.startswith("http") or self.path.startswith("https"):
+            self.url: str = self.path
+        else: 
+            self.url: str = "http://" + self.headers.get("Host", "") + self.path
+    
     def do_GET(self): self.handle_request() # GET requests
     def do_POST(self): self.handle_request() # POST requests
     def do_PUT(self): self.handle_request() # PUT requests
@@ -43,28 +51,32 @@ class MITMProxyServer(BaseHTTPRequestHandler):
     def do_HEAD(self): self.handle_request() # HEAD requests
     def do_OPTIONS(self): self.handle_request() # OPTIONS requests
     
-    def do_CONNECT(self): 
+    # HTTPS handling
+    def do_CONNECT(self) -> None : 
         host, port = self.path.split(":")
         port = int(port)
         
         self.log(f"CONNECT {host} : {port}", "[COMMAND + URL]")
 
         try : 
-            target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Connecting to the site ( Host and Port )
+            target_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             target_socket.connect((host, port))
 
             self.log(None, "[REQUEST HEADERS]")
             for key, value in self.headers.items(): self.log(f"{key} : {value}", None)
             
+            # Sending Success
             self.send_response(200, "Connection Established")
             self.end_headers()
             
             client_socket = self.request
             
+            # Forwarding the data
             def forward(source, dest):
                 try:
                     while True:
-                        data = source.recv(8192)
+                        data: bytes = source.recv(8192)
                         if not data:
                             break
                         dest.send(data)
@@ -75,6 +87,7 @@ class MITMProxyServer(BaseHTTPRequestHandler):
                     client_socket.close()
                     target_socket.close()
 
+            # Create threads for concurrnecy
             client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket), daemon=True)
             target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket), daemon=True)
             
@@ -91,12 +104,7 @@ class MITMProxyServer(BaseHTTPRequestHandler):
             except:
                 pass
 
-    def get_url(self) -> None:
-        if self.path.startswith("http") or self.path.startswith("https"):
-            self.url: str = self.path
-        else: 
-            self.url: str = "http://" + self.headers.get("Host", "") + self.path
-    
+    # Creating custom arguments for the requests library
     def handle_requests_arguments(self) -> dict: 
         content_length: str | None = self.headers.get("Content-Length")
         self.body = None
@@ -124,13 +132,14 @@ class MITMProxyServer(BaseHTTPRequestHandler):
         }
 
         return request_arguments
-
+    
+    # Handling HTTP requests
     def handle_request(self) -> None:
         try:
             self.get_url()
-
             self.log(f"{self.command} {self.url}", "[COMMAND + URL]")
 
+            # Sending a request to the site
             request_args: dict = self.handle_requests_arguments()
             response: requests.Response = session.request(**request_args)
             
