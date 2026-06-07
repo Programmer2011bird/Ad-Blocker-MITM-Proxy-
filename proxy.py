@@ -3,6 +3,7 @@ from socketserver import ThreadingMixIn
 import requests.adapters
 import threading
 import requests
+import blocker
 import config
 import socket
 
@@ -35,9 +36,12 @@ class MITMProxyServer(BaseHTTPRequestHandler):
     # Handling special urls
     def get_url(self) -> None:
         if self.path.startswith("http") or self.path.startswith("https"):
-            self.url: str = self.path
+            BLOCKER = blocker.Blocker(self.path)
+            self.url: str = BLOCKER.check_url()
         else: 
-            self.url: str = "http://" + self.headers.get("Host", "") + self.path
+            tempUrl = "https://" + self.path
+            BLOCKER = blocker.Blocker(tempUrl)
+            self.url: str = BLOCKER.check_url()
     
     def do_GET(self): self.handle_request() # GET requests
     def do_POST(self): self.handle_request() # POST requests
@@ -48,8 +52,13 @@ class MITMProxyServer(BaseHTTPRequestHandler):
     
     # HTTPS handling
     def do_CONNECT(self) -> None : 
-        host, port = self.path.split(":")
-        port = int(port)
+        self.get_url()
+        try:
+            host, port = self.url.strip("http://").strip("https://").split(":")
+            port = int(port)
+        except Exception:
+            host = None 
+            port = None
         
         self.log(f"CONNECT {host} : {port}", "[COMMAND + URL]")
 
