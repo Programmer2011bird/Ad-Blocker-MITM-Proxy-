@@ -12,6 +12,7 @@ def main():
 
     try:
         server: ThreadingServer = ThreadingServer((config.HOST, config.PORT), MITMProxyServer)
+        print(f"[ INFO ] THE MAN-IN-THE-MIDDLE PROXY IS RUNNING ON THE ADDRESS : {config.HOST} : {config.PORT}")
         server.serve_forever()
 
     except KeyboardInterrupt:
@@ -23,4 +24,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
